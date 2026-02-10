@@ -1,0 +1,6 @@
+.env
+.env.example
+.git/
+.DS_Store
+open-claw/
+*.md
