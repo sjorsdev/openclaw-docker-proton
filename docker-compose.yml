@@ -14,10 +14,7 @@ services:
       # pass-cli session, rclone config, and encryption key live here.
       # State also syncs to Proton Drive.
       - openclaw-state:/home/node/.openclaw
-    ports:
-      # Loopback only — access via SSH tunnel or Tailscale for remote.
-      # Remove 127.0.0.1: to expose publicly (secure with gateway token).
-      - "127.0.0.1:18789:18789"
+    network_mode: host
     healthcheck:
       test: ["CMD", "curl", "-sS", "-o", "/dev/null", "-w", "", "http://localhost:18789/"]
       interval: 30s

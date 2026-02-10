@@ -1,4 +1,4 @@
-# 🦞 OpenClaw + Proton
+# OpenClaw + Proton
 
 Self-hosted OpenClaw with secrets in Proton Pass and state on Proton Drive. The only startup secret is a Telegram bot token — everything else is configured via chat.
 
@@ -6,21 +6,22 @@ Self-hosted OpenClaw with secrets in Proton Pass and state on Proton Drive. The 
 
 ```
 ┌─────────────────────┐     ┌─────────────────────┐
-│  Your Personal      │     │  Bot Account (free)  │
+│  Your Personal      │     │  Bot Account (paid)  │
 │  Proton Account     │     │  openclaw-bot@proton  │
 │                     │     │                       │
 │  Pass: "OpenClaw"   │────▶│  Pass: receives       │
 │  vault (you manage) │share│  shared vault (read)  │
 │                     │     │                       │
 │                     │     │  Drive: OpenClaw/      │
-│                     │     │  (state sync, 5 GB)   │
+│                     │     │  (state sync)         │
 └─────────────────────┘     └───────────┬───────────┘
                                         │
                             ┌───────────▼───────────┐
                             │  Docker Container      │
                             │                        │
                             │  Telegram setup bot    │
-                            │    ↓ /setup via chat   │
+                            │    ↓ /setup PIN        │
+                            │  Browser auth (link)   │
                             │  pass-cli login        │
                             │  rclone pull state     │
                             │    ↓                   │
@@ -35,14 +36,14 @@ Self-hosted OpenClaw with secrets in Proton Pass and state on Proton Drive. The 
 - Docker + Docker Compose
 - Git
 - A personal Proton account (paid, for vault sharing)
-- A bot Proton account (free works fine)
+- A bot Proton account (paid — pass-cli requires a Pass subscription)
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 
 ## One-Time Setup
 
 ### 1. Create the bot's Proton account
 
-Sign up at [proton.me](https://proton.me) — e.g. `openclaw-bot@proton.me`. Free plan gives 5 GB Drive storage, more than enough.
+Sign up at [proton.me](https://proton.me) — e.g. `openclaw-bot@proton.me`. Upgrade to a paid plan (pass-cli requires Pass Plus or higher).
 
 **Important:** Log into [drive.proton.me](https://drive.proton.me) at least once with the bot account to initialize Drive encryption keys (rclone needs this).
 
@@ -51,14 +52,16 @@ Sign up at [proton.me](https://proton.me) — e.g. `openclaw-bot@proton.me`. Fre
 In **your personal** Proton Pass app:
 
 1. Create a vault called **`OpenClaw`**
-2. Add login items with your API keys:
+2. Add login items:
 
-   | Item Name      | Password field         |
-   |---------------|------------------------|
-   | Anthropic     | `sk-ant-api03-...`     |
-   | Gateway Token | `pick-a-strong-token`  |
+   | Item Name      | Username field          | Password field         |
+   |---------------|-------------------------|------------------------|
+   | Gemini        |                         | Your Google AI API key |
+   | Gateway Token |                         | Pick a strong token    |
+   | Proton Bot    | `openclaw-bot@proton.me`| Bot's Proton password  |
 
-3. Share the vault → invite `openclaw-bot@proton.me` → **Viewer** permissions
+3. If the bot account has 2FA, add the TOTP URI to the "Proton Bot" item
+4. Share the vault → invite the bot account → **Viewer** permissions
 
 ### 3. Create a Telegram bot
 
@@ -70,7 +73,7 @@ Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → copy 
 git clone <this-repo> openclaw-proton
 cd openclaw-proton
 ./start.sh          # creates .env on first run
-# Paste your Telegram bot token into .env
+# Fill in TELEGRAM_BOT_TOKEN and SETUP_PIN in .env
 ./start.sh          # builds and starts
 ```
 
@@ -79,10 +82,10 @@ cd openclaw-proton
 Message your bot on Telegram:
 
 ```
-/setup YOUR_PIN openclaw-bot@proton.me your-bot-password
+/setup YOUR_PIN
 ```
 
-The bot verifies the PIN (from your `.env`), logs into Proton Pass, pulls state from Drive, and starts the full OpenClaw gateway. Done.
+The bot sends you a browser login link. Open it, log in with the bot's Proton account. No credentials go through Telegram. After login, the bot configures Drive sync and starts the OpenClaw gateway.
 
 ## What Goes Where
 
@@ -90,10 +93,11 @@ The bot verifies the PIN (from your `.env`), logs into Proton Pass, pulls state 
 |-------|-------|------------|
 | API keys, tokens | Proton Pass → "OpenClaw" vault | You, from your phone |
 | Telegram token + PIN | `.env` (local, gitignored) | You, once |
-| Proton credentials | Sent via Telegram `/setup` | You, on first boot |
+| Proton login | Browser auth via link in Telegram | You, on first boot |
+| Bot identity | Generated from `BOT_NAME` env var | entrypoint.sh |
 | OpenClaw state | Proton Drive → `OpenClaw/` | Container, auto-synced |
 | Config | `openclaw.json.template` → container | You, edit template |
-| SQLite indexes | Container volume (local only) | OpenClaw, rebuilt on boot |
+| Local-only data | `~/.openclaw/local/` (not synced) | Container |
 
 ## Files
 
@@ -101,14 +105,14 @@ The bot verifies the PIN (from your `.env`), logs into Proton Pass, pulls state 
 |------|---------|
 | `start.sh` | Clone OpenClaw, build images, start container |
 | `stop.sh` | Graceful stop with final Drive sync |
-| `.env.example` | Template (just Telegram token + bot name) |
+| `.env.example` | Template (Telegram token + PIN + bot name) |
 | `secrets.env` | Maps env vars → `pass://` URIs for pass-cli |
 | `openclaw.json.template` | OpenClaw config with `${VAR}` refs |
-| `setup-telegram.sh` | Minimal Telegram bot for Proton credential setup |
-| `rclone-exclude.txt` | Shared exclude patterns for Drive sync |
+| `setup-telegram.sh` | Telegram bot for browser-based Proton setup |
+| `rclone-exclude.txt` | Exclude patterns for Drive sync |
 | `Dockerfile` | Extends OpenClaw image with pass-cli + rclone |
 | `docker-compose.yml` | Container orchestration |
-| `entrypoint.sh` | Boot: setup (if needed) → pull → start → sync |
+| `entrypoint.sh` | Boot: setup → pull → identity → start → sync |
 
 ## Adding a New Secret
 
@@ -117,19 +121,12 @@ The bot verifies the PIN (from your `.env`), logs into Proton Pass, pulls state 
 3. Reference `${VAR_NAME}` in `openclaw.json.template`
 4. Rebuild: `docker compose build && docker compose up -d`
 
-## Adding a Channel (e.g. Signal)
-
-1. Add the bot token to your "OpenClaw" vault in Proton Pass
-2. Add the `pass://` mapping in `secrets.env`
-3. Uncomment the channel section in `openclaw.json.template`
-4. Rebuild and restart
-
 ## Customization
 
 - **Bot name:** Set `BOT_NAME` in `.env` (default: `OpenClaw`)
 - **Sync interval:** Set `SYNC_INTERVAL` in `.env` (default: 60 seconds)
 - **Drive folder:** Set `SYNC_REMOTE_PATH` in `.env` (default: `OpenClaw`)
-- **AI model:** Edit `agents.defaults.model` in `openclaw.json.template`
+- **AI model:** Edit `agents.defaults.model.primary` in `openclaw.json.template`
 - **Expose publicly:** Remove `127.0.0.1:` from the port mapping in `docker-compose.yml`
 
 ## Troubleshooting
@@ -144,24 +141,23 @@ docker compose exec openclaw bash
 # Check pass-cli status
 docker compose exec openclaw pass-cli vault list
 
-# Check rclone connectivity
-docker compose exec openclaw rclone ls proton:OpenClaw/
-
 # Re-run Proton setup (if session expired)
 docker compose restart
 # Then send /setup again via Telegram
 
 # Rebuild from scratch
-docker compose down -v    # ⚠️ wipes local state volume + credentials
+docker compose down -v    # wipes local state volume + credentials
 ./start.sh
 ```
 
 ## Security Notes
 
-- `.env` contains only the Telegram bot token — no Proton passwords
-- Proton credentials are sent once via Telegram (TLS encrypted) and stored in the container volume
+- `.env` contains only the Telegram bot token and setup PIN — no Proton passwords
+- Proton login uses browser-based auth — no credentials go through Telegram
+- The "Proton Bot" password in Pass is only used for Drive sync (rclone)
 - The bot account has **Viewer** access to your vault — it can't modify your secrets
 - Revoke access instantly by unsharing the vault in Proton Pass
 - State on Proton Drive is end-to-end encrypted by Proton
 - Gateway token controls who can connect to the dashboard — pick a strong one
 - The pass-cli session and encryption key persist in the Docker volume
+- 2FA is supported — TOTP codes are generated from the "Proton Bot" item in Pass

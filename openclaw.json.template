@@ -5,7 +5,7 @@
   gateway: {
     port: 18789,
     mode: "local",
-    bind: "lan",
+    bind: "loopback",
     auth: {
       token: "${OPENCLAW_GATEWAY_TOKEN}",
     },
