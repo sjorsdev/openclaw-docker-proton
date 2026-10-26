@@ -127,7 +127,7 @@ The bot sends you a browser login link. Open it, log in with the bot's Proton ac
 - **Sync interval:** Set `SYNC_INTERVAL` in `.env` (default: 60 seconds)
 - **Drive folder:** Set `SYNC_REMOTE_PATH` in `.env` (default: `OpenClaw`)
 - **AI model:** Edit `agents.defaults.model.primary` in `openclaw.json.template`
-- **Expose publicly:** Remove `127.0.0.1:` from the port mapping in `docker-compose.yml`
+- **Expose publicly:** Change `bind` from `"loopback"` to `"lan"` in `openclaw.json.template`
 
 ## Troubleshooting
 
